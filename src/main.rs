@@ -96,17 +96,22 @@ fn main() {
 
     vulkano::impl_vertex!(Vertex, position);
 
-    let mut mesh = stl_io::read_stl(&mut File::open("object.stl").expect("couldn't open stl file")).expect("couldn't read stl file");
+//    let mut mesh = stl_io::read_stl(&mut File::open("object.stl").expect("couldn't open stl file")).expect("couldn't read stl file");
+//
+//    let vertices = mesh.vertices.into_iter().map(|v| Vertex { position: v });
+//    let indices = mesh.faces.into_iter().map(|f| Index { position: [f.vertices[0] as u32, f.vertices[1] as u32, f.vertices[2] as u32] });
 
-//    if let Err(e) = mesh.validate() {
-//        panic!("{:?}", e);
-//    } else {
-//        println!("validated");
-//    }
+    let vertices = vec![
+        Vertex { position: [-1.0, -1.0, 0.0] },
+        Vertex { position: [ 1.0,  1.0, 0.0] },
+        Vertex { position: [-1.0,  1.0, 0.0] },
+        Vertex { position: [ 1.0, -1.0, 0.0] },
+    ];
 
-
-    let vertices = mesh.vertices.into_iter().map(|v| Vertex { position: v });
-    let indices = mesh.faces.into_iter().map(|f| Index { position: [f.vertices[0] as u32, f.vertices[1] as u32, f.vertices[2] as u32] });
+    let indices: Vec<u32> = vec![
+        0, 1, 2,
+        0, 1, 3
+    ];
 
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
         device.clone(), BufferUsage::all(), vertices.into_iter()
@@ -153,6 +158,7 @@ fn main() {
         .vertex_input_single_buffer::<Vertex>()
         .vertex_shader(vs.main_entry_point(), ())
         .triangle_list()
+        .cull_mode_disabled()
         .viewports_dynamic_scissors_irrelevant(1)
         .fragment_shader(fs.main_entry_point(), ())
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
@@ -169,8 +175,8 @@ fn main() {
     let mut previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<GpuFuture>;
 
     let mut view = Matrix4::look_at(
-        Point3::new(2.0, 2.0, 1.5),
-        Point3::new(0.0, 0.0, 0.0),
+        Point3::new(0.0,  0.0, 3.0),
+        Point3::new(0.0,  0.0, 0.0),
         Vector3::new(0.0, 0.0, 1.0),
     );
 
@@ -178,10 +184,10 @@ fn main() {
         Rad::from(Deg(45.0)),
         images[0].dimensions()[0] as f32 / images[0].dimensions()[1] as f32,
         0.1,
-        10.0,
+        100.0,
     );
 
-    perspective.y.y *= -1.0;
+//    perspective.y.y *= -1.0;
 
     let uniform_buffer_object = UniformBufferObject { view, proj: perspective };
 
