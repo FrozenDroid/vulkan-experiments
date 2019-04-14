@@ -36,7 +36,7 @@ unsafe impl vulkano::pipeline::input_assembly::Index for Index {
 
 #[derive(Clone)]
 struct UniformBufferObject {
-//    model: Matrix4<f32>,
+    //    model: Matrix4<f32>,
     view:  Matrix4<f32>,
     proj:  Matrix4<f32>,
 }
@@ -167,10 +167,9 @@ fn main() {
 
     let mut previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<GpuFuture>;
 
-
     let mut view = Matrix4::look_at(
-        Point3::new(0.0,  0.0, 0.0),
         Point3::new(5.0,  5.0, 0.0),
+        Point3::new(0.0,  0.0, 0.0),
         Vector3::new(0.0, 1.0, 0.0),
     );
 
@@ -184,12 +183,13 @@ fn main() {
     perspective.y.y *= -1.0;
 
     let mut running = true;
+    let mut previous_mouse = (0.0, 0.0);
 
     while running {
 
         previous_frame_end.cleanup_finished();
 
-        window.set_cursor_position(LogicalPosition { x: images[0].dimensions().width() as f64 / 2.0, y: images[0].dimensions().height() as f64 / 2.0 });
+        //window.set_cursor_position(LogicalPosition { x: images[0].dimensions().width() as f64 / 2.0, y: images[0].dimensions().height() as f64 / 2.0 });
 
         let uniform_buffer_object = UniformBufferObject { view, proj: perspective };
 
@@ -206,10 +206,11 @@ fn main() {
             winit::Event::WindowEvent { event, .. } => match event {
                 winit::WindowEvent::CursorMoved { position, .. } => {
                     println!("{:?}", images[0].dimensions());
-                    let delta_x = images[0].dimensions().width() as f32 / 2.0 - position.x as f32;
-                    let delta_y = images[0].dimensions().height() as f32 / 2.0 - position.y as f32;
-                    view = view * Matrix4::from_angle_y(Rad::from(Deg(delta_x as f32)));
-                    view = view * Matrix4::from_angle_z(Rad::from(Deg(delta_y as f32)));
+                    let dx = previous_mouse.0 - position.x as f32;
+                    let dy = previous_mouse.1 - position.y as f32;
+                    previous_mouse = (position.x as f32, position.y as f32);
+                    view = view * Matrix4::from_angle_y(Rad::from(Deg(dx / 10.0)));
+                    view = view * Matrix4::from_angle_z(Rad::from(Deg(dy / 10.0)));
                     println!("mouse: {:?}", position)
                 },
                 winit::WindowEvent::KeyboardInput { input, .. } => {
@@ -254,7 +255,7 @@ fn main() {
 
         match future {
             Ok(f) => previous_frame_end = Box::new(f) as Box<_>,
-            Err(e) => panic!("{:?}", e),
+            Err(e) => {println!("{:?}", e); previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<_>;},
         }
 
     }
