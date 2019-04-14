@@ -954,6 +954,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "tobj"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
 name = "unicode-xid"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -976,6 +981,7 @@ dependencies = [
  "image 0.21.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "stl_io 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "time 0.1.42 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tobj 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "vulkano 0.11.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "vulkano-shaders 0.11.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "vulkano-win 0.11.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1266,6 +1272,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum syn 0.15.29 (registry+https://github.com/rust-lang/crates.io-index)" = "1825685f977249735d510a242a6727b46efe914bb67e38d30c071b1b72b1d5c2"
 "checksum tiff 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "1e4834f28a0330cb9f3f2c87d2649dca723cb33802e2bdcf18da32759fbec7ce"
 "checksum time 0.1.42 (registry+https://github.com/rust-lang/crates.io-index)" = "db8dcfca086c1143c9270ac42a2bbd8a7ee477b78ac8e45b19abfb0cbede4b6f"
+"checksum tobj 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)" = "81b6e0199032d341b8491817f2da249c9aa150d18534b58865c2ebe787b29db1"
 "checksum unicode-xid 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "fc72304796d0818e357ead4e000d19c9c174ab23dc11093ac919054d20a6a7fc"
 "checksum vk-sys 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "36f5fd4a7d6d5d19808610583131c0aed271556527cad4cb71c436831a28e059"
 "checksum void 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"

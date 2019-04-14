@@ -1,7 +1,7 @@
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::device::{Device, Features, DeviceExtensions};
 use vulkano::buffer::{CpuAccessibleBuffer, BufferUsage, CpuBufferPool};
-use winit::{EventsLoop, WindowBuilder, Window};
+use winit::{EventsLoop, WindowBuilder, Window, VirtualKeyCode};
 use vulkano_win::VkSurfaceBuild;
 use vulkano::swapchain::{Swapchain, SurfaceTransform, PresentMode};
 use std::sync::Arc;
@@ -15,6 +15,9 @@ use std::fs::File;
 use cgmath::{Rad, Matrix3, Matrix4, Point3, Vector3, Deg};
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::pipeline::input_assembly::IndexType;
+use std::path::Path;
+use vulkano::image::traits::ImageViewAccess;
+use winit::dpi::LogicalPosition;
 
 #[derive(Copy, Clone)]
 struct Vertex {
@@ -51,6 +54,7 @@ fn main() {
     let surface = WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
     let window = surface.window();
 
+    window.grab_cursor(true);
 
     // Find a queue family that supports graphical usage.
     let queue_family = physical_device.queue_families()
@@ -96,22 +100,11 @@ fn main() {
 
     vulkano::impl_vertex!(Vertex, position);
 
-//    let mut mesh = stl_io::read_stl(&mut File::open("object.stl").expect("couldn't open stl file")).expect("couldn't read stl file");
-//
-//    let vertices = mesh.vertices.into_iter().map(|v| Vertex { position: v });
-//    let indices = mesh.faces.into_iter().map(|f| Index { position: [f.vertices[0] as u32, f.vertices[1] as u32, f.vertices[2] as u32] });
-
-    let vertices = vec![
-        Vertex { position: [-1.0, -1.0, 0.0] },
-        Vertex { position: [ 1.0,  1.0, 0.0] },
-        Vertex { position: [-1.0,  1.0, 0.0] },
-        Vertex { position: [ 1.0, -1.0, 0.0] },
-    ];
-
-    let indices: Vec<u32> = vec![
-        0, 1, 2,
-        0, 1, 3
-    ];
+    let (mut models, mat) = tobj::load_obj(Path::new("./teapot.obj")).expect("couldn't load teapot");
+    let mut model = models.first().expect("couldn't find teapot model");
+    let mesh = model.clone().mesh;
+    let indices = mesh.indices;
+    let vertices = mesh.positions.chunks(3).map(|chunk| Vertex { position: [chunk[0], chunk[1], chunk[2]] });
 
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
         device.clone(), BufferUsage::all(), vertices.into_iter()
@@ -174,35 +167,67 @@ fn main() {
 
     let mut previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<GpuFuture>;
 
+
     let mut view = Matrix4::look_at(
-        Point3::new(0.0,  0.0, 3.0),
         Point3::new(0.0,  0.0, 0.0),
-        Vector3::new(0.0, 0.0, 1.0),
+        Point3::new(5.0,  5.0, 0.0),
+        Vector3::new(0.0, 1.0, 0.0),
     );
 
     let mut perspective = cgmath::perspective(
-        Rad::from(Deg(45.0)),
-        images[0].dimensions()[0] as f32 / images[0].dimensions()[1] as f32,
+        Rad::from(Deg(90.0)),
+        images[0].dimensions().width() as f32 / images[0].dimensions().height() as f32,
         0.1,
-        100.0,
+        10.0,
     );
 
-//    perspective.y.y *= -1.0;
+    perspective.y.y *= -1.0;
 
-    let uniform_buffer_object = UniformBufferObject { view, proj: perspective };
+    let mut running = true;
 
-    let uniform_buffer = CpuAccessibleBuffer::from_iter(
-        device.clone(), BufferUsage::all(), vec![uniform_buffer_object].into_iter()
-    ).unwrap();
-
-    let set = Arc::new(PersistentDescriptorSet::start(pipeline.clone(), 0)
-        .add_buffer(uniform_buffer.clone()).unwrap()
-        .build().unwrap()
-    );
-
-    loop {
+    while running {
 
         previous_frame_end.cleanup_finished();
+
+        window.set_cursor_position(LogicalPosition { x: images[0].dimensions().width() as f64 / 2.0, y: images[0].dimensions().height() as f64 / 2.0 });
+
+        let uniform_buffer_object = UniformBufferObject { view, proj: perspective };
+
+        let uniform_buffer = CpuAccessibleBuffer::from_iter(
+            device.clone(), BufferUsage::all(), vec![uniform_buffer_object].into_iter()
+        ).unwrap();
+
+        let set = Arc::new(PersistentDescriptorSet::start(pipeline.clone(), 0)
+            .add_buffer(uniform_buffer.clone()).unwrap()
+            .build().unwrap()
+        );
+
+        events_loop.poll_events(|e| match e {
+            winit::Event::WindowEvent { event, .. } => match event {
+                winit::WindowEvent::CursorMoved { position, .. } => {
+                    println!("{:?}", images[0].dimensions());
+                    let delta_x = images[0].dimensions().width() as f32 / 2.0 - position.x as f32;
+                    let delta_y = images[0].dimensions().height() as f32 / 2.0 - position.y as f32;
+                    view = view * Matrix4::from_angle_y(Rad::from(Deg(delta_x as f32)));
+                    view = view * Matrix4::from_angle_z(Rad::from(Deg(delta_y as f32)));
+                    println!("mouse: {:?}", position)
+                },
+                winit::WindowEvent::KeyboardInput { input, .. } => {
+                    match input.virtual_keycode {
+                        Some(VirtualKeyCode::W) => view = view * Matrix4::from_translation(Vector3::new(0.0, 0.0, 0.1)),
+                        Some(VirtualKeyCode::S) => view = view * Matrix4::from_translation(Vector3::new(0.0, 0.0, -0.1)),
+                        Some(VirtualKeyCode::A) => view = view * Matrix4::from_translation(Vector3::new(0.0, 0.1, 0.0)),
+                        Some(VirtualKeyCode::D) => view = view * Matrix4::from_translation(Vector3::new(0.0, -0.1, 0.0)),
+                        _ => {}
+                    }
+                }
+                winit::WindowEvent::CloseRequested => {
+                    running = false;
+                }
+                _ => {}
+            },
+            _ => {},
+        });
 
         let (image_num, acquire_future) = match vulkano::swapchain::acquire_next_image(swapchain.clone(), None) {
             Ok(r) => r,
@@ -245,7 +270,7 @@ fn window_size_dependent_setup(
 
     let viewport = Viewport {
         origin: [0.0, 0.0],
-        dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+        dimensions: [dimensions.width() as f32, dimensions.height() as f32],
         depth_range: 0.0 .. 1.0,
     };
     dynamic_state.viewports = Some(vec!(viewport));

@@ -11,6 +11,8 @@ vulkano-win = "0.11.1"
 vulkano-shaders = "0.11.1"
 stl_io = "0.4.0"
 
+tobj = "0.1.7"
+
 cgmath = "0.17"
 image = "0.21"
 time = "0.1.38"
