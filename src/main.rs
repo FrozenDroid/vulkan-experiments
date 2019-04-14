@@ -12,7 +12,7 @@ use vulkano::sync::GpuFuture;
 use vulkano::image::SwapchainImage;
 use vulkano::pipeline::viewport::Viewport;
 use std::fs::File;
-use cgmath::{Rad, Matrix3, Matrix4, Point3, Vector3, Deg};
+use cgmath::{Rad, Matrix3, Matrix4, Point3, Vector3, Deg, Euler};
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::pipeline::input_assembly::IndexType;
 use std::path::Path;
@@ -175,7 +175,7 @@ fn main() {
     );
 
     let mut perspective = cgmath::perspective(
-        Rad::from(Deg(90.0)),
+        Rad::from(Deg(45.0)),
         images[0].dimensions().width() as f32 / images[0].dimensions().height() as f32,
         0.01,
         10.0,
@@ -204,8 +204,6 @@ fn main() {
     while running {
 
         previous_frame_end.cleanup_finished();
-
-        //window.set_cursor_position(LogicalPosition { x: images[0].dimensions().width() as f64 / 2.0, y: images[0].dimensions().height() as f64 / 2.0 });
 
         let uniform_buffer_object = UniformBufferObject { view, proj: perspective };
 
@@ -249,8 +247,13 @@ fn main() {
             },
             winit::Event::DeviceEvent { event, .. } => match event {
                 winit::DeviceEvent::MouseMotion { delta, .. } => {
-                    view = Matrix4::from_angle_y(Rad::from(Deg(delta.0 as f32 / 2.0))) * Matrix4::from_angle_x(Rad::from(Deg(delta.1 as f32 / 2.0))) * view;
-//                    view =  * view;
+                    use cgmath::Angle;
+                    let yaw   = Deg(delta.1 as f32 / 2.0);
+                    let pitch = Deg(delta.0 as f32 / 2.0);
+                    view =  Matrix4::from_angle_x(Rad::from(Deg(yaw.cos() * pitch.cos()))) *
+                            Matrix4::from_angle_y(Rad::from(Deg(pitch.sin()))) *
+                            Matrix4::from_angle_z(Rad::from(Deg(yaw.sin() * pitch.cos()))) *
+                            view;
                 },
                 _ => {}
             }
