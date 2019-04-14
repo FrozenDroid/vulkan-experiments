@@ -206,16 +206,16 @@ fn main() {
         use cgmath::ElementWise;
 
         if movement_state.forward == ElementState::Pressed {
-            camera.set_position(camera.position() + (Vector3::new(0.0, 0.0, 0.1)));
+            camera.move_forward(0.1);
         }
         if movement_state.backward == ElementState::Pressed {
-            camera.set_position(camera.position() + Vector3::new(0.0, 0.0, -0.1));
+            camera.move_forward(-0.1);
         }
         if movement_state.left == ElementState::Pressed {
-            camera.set_position(camera.position() + (Vector3::new(0.1, 0.0, 0.0)));
+            camera.move_left(0.1);
         }
         if movement_state.right == ElementState::Pressed {
-            camera.set_position(camera.position() + (Vector3::new(-0.1, 0.0, 0.0)));
+            camera.move_left(-0.1);
         }
 
         println!("{:?}", camera);
@@ -238,8 +238,8 @@ fn main() {
             },
             winit::Event::DeviceEvent { event, .. } => match event {
                 winit::DeviceEvent::MouseMotion { delta, .. } => {
-                    camera.set_heading(camera.heading().clone() + Deg(delta.0 as f32 * 0.001));
-                    camera.set_pitch(camera.pitch().clone() + Deg(delta.1 as f32 * 0.001));
+                    camera.turn(Deg(delta.0 as f32 * 0.1));
+                    camera.pitch(Deg(delta.1 as f32 * 0.1));
                 },
                 _ => {}
             }
