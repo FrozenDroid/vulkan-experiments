@@ -12,12 +12,16 @@ use vulkano::sync::GpuFuture;
 use vulkano::image::SwapchainImage;
 use vulkano::pipeline::viewport::Viewport;
 use std::fs::File;
-use cgmath::{Rad, Matrix3, Matrix4, Point3, Vector3, Deg, Euler};
+use cgmath::{Rad, Matrix3, Matrix4, Point3, Vector3, Deg, Euler, Quaternion, Decomposed, Basis3, vec3};
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::pipeline::input_assembly::IndexType;
 use std::path::Path;
 use vulkano::image::traits::ImageViewAccess;
 use winit::dpi::LogicalPosition;
+use cgmath::prelude::{Rotation3, Angle};
+use crate::camera::Camera;
+
+mod camera;
 
 #[derive(Copy, Clone)]
 struct Vertex {
@@ -168,17 +172,11 @@ fn main() {
 
     let mut previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<GpuFuture>;
 
-    let mut view = Matrix4::look_at(
-        Point3::new(5.0,  5.0, 0.0),
-        Point3::new(0.0,  0.0, 0.0),
-        Vector3::new(0.0, 1.0, 0.0),
-    );
-
     let mut perspective = cgmath::perspective(
         Rad::from(Deg(45.0)),
         images[0].dimensions().width() as f32 / images[0].dimensions().height() as f32,
         0.01,
-        10.0,
+        100.0,
     );
 
     perspective.y.y *= -1.0;
@@ -186,57 +184,50 @@ fn main() {
     let mut running = true;
     let mut previous_mouse = (0.0, 0.0);
 
-
     struct Movement {
-        forward: ElementState,
+        forward:  ElementState,
         backward: ElementState,
-        left: ElementState,
-        right: ElementState,
+        left:     ElementState,
+        right:    ElementState,
     }
 
     let mut movement_state = Movement {
-        forward: ElementState::Released,
+        forward:  ElementState::Released,
         backward: ElementState::Released,
-        left: ElementState::Released,
-        right: ElementState::Released,
+        left:     ElementState::Released,
+        right:    ElementState::Released,
     };
 
-    while running {
+    let mut camera: Camera<f32> = Camera::default();
 
+    while running {
         previous_frame_end.cleanup_finished();
 
-        let uniform_buffer_object = UniformBufferObject { view, proj: perspective };
-
-        let uniform_buffer = CpuAccessibleBuffer::from_iter(
-            device.clone(), BufferUsage::all(), vec![uniform_buffer_object].into_iter()
-        ).unwrap();
-
-        let set = Arc::new(PersistentDescriptorSet::start(pipeline.clone(), 0)
-            .add_buffer(uniform_buffer.clone()).unwrap()
-            .build().unwrap()
-        );
+        use cgmath::ElementWise;
 
         if movement_state.forward == ElementState::Pressed {
-            view = Matrix4::from_translation(Vector3::new(0.0, 0.0, 0.1)) * view
+            camera.set_position(camera.position() + (Vector3::new(0.0, 0.0, 0.1)));
         }
         if movement_state.backward == ElementState::Pressed {
-            view = Matrix4::from_translation(Vector3::new(0.0, 0.0, -0.1)) * view
+            camera.set_position(camera.position() + Vector3::new(0.0, 0.0, -0.1));
         }
         if movement_state.left == ElementState::Pressed {
-            view = Matrix4::from_translation(Vector3::new(0.1, 0.0, 0.0)) * view
+            camera.set_position(camera.position() + (Vector3::new(0.1, 0.0, 0.0)));
         }
         if movement_state.right == ElementState::Pressed {
-            view = Matrix4::from_translation(Vector3::new(-0.1, 0.0, 0.0)) * view
+            camera.set_position(camera.position() + (Vector3::new(-0.1, 0.0, 0.0)));
         }
+
+        println!("{:?}", camera);
 
         events_loop.poll_events(|e| match e {
             winit::Event::WindowEvent { event, .. } => match event {
                 winit::WindowEvent::KeyboardInput { input, .. } => {
                     match input.virtual_keycode {
-                        Some(VirtualKeyCode::W) => movement_state = Movement { forward: input.state, ..movement_state },
+                        Some(VirtualKeyCode::W) => movement_state = Movement { forward:  input.state, ..movement_state },
                         Some(VirtualKeyCode::S) => movement_state = Movement { backward: input.state, ..movement_state },
-                        Some(VirtualKeyCode::A) => movement_state = Movement { left: input.state, ..movement_state },
-                        Some(VirtualKeyCode::D) => movement_state = Movement { right: input.state, ..movement_state },
+                        Some(VirtualKeyCode::A) => movement_state = Movement { left:     input.state, ..movement_state },
+                        Some(VirtualKeyCode::D) => movement_state = Movement { right:    input.state, ..movement_state },
                         _ => {}
                     }
                 }
@@ -247,18 +238,27 @@ fn main() {
             },
             winit::Event::DeviceEvent { event, .. } => match event {
                 winit::DeviceEvent::MouseMotion { delta, .. } => {
-                    use cgmath::Angle;
-                    let yaw   = Deg(delta.1 as f32 / 2.0);
-                    let pitch = Deg(delta.0 as f32 / 2.0);
-                    view =  Matrix4::from_angle_x(Rad::from(Deg(yaw.cos() * pitch.cos()))) *
-                            Matrix4::from_angle_y(Rad::from(Deg(pitch.sin()))) *
-                            Matrix4::from_angle_z(Rad::from(Deg(yaw.sin() * pitch.cos()))) *
-                            view;
+                    camera.set_heading(camera.heading().clone() + Deg(delta.0 as f32 * 0.001));
+                    camera.set_pitch(camera.pitch().clone() + Deg(delta.1 as f32 * 0.001));
                 },
                 _ => {}
             }
             _ => {},
         });
+
+        let uniform_buffer_object = UniformBufferObject {
+            view: camera.view_matrix(),
+            proj: perspective
+        };
+
+        let uniform_buffer = CpuAccessibleBuffer::from_iter(
+            device.clone(), BufferUsage::all(), vec![uniform_buffer_object].into_iter()
+        ).unwrap();
+
+        let set = Arc::new(PersistentDescriptorSet::start(pipeline.clone(), 0)
+            .add_buffer(uniform_buffer.clone()).unwrap()
+            .build().unwrap()
+        );
 
         let (image_num, acquire_future) = match vulkano::swapchain::acquire_next_image(swapchain.clone(), None) {
             Ok(r) => r,
