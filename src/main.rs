@@ -1,7 +1,7 @@
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::device::{Device, Features, DeviceExtensions};
 use vulkano::buffer::{CpuAccessibleBuffer, BufferUsage, CpuBufferPool};
-use winit::{EventsLoop, WindowBuilder, Window, VirtualKeyCode};
+use winit::{EventsLoop, WindowBuilder, Window, VirtualKeyCode, ElementState};
 use vulkano_win::VkSurfaceBuild;
 use vulkano::swapchain::{Swapchain, SurfaceTransform, PresentMode};
 use std::sync::Arc;
@@ -55,6 +55,7 @@ fn main() {
     let window = surface.window();
 
     window.grab_cursor(true);
+    window.hide_cursor(true);
 
     // Find a queue family that supports graphical usage.
     let queue_family = physical_device.queue_families()
@@ -151,7 +152,7 @@ fn main() {
         .vertex_input_single_buffer::<Vertex>()
         .vertex_shader(vs.main_entry_point(), ())
         .triangle_list()
-        .cull_mode_disabled()
+//        .cull_mode_disabled()
         .viewports_dynamic_scissors_irrelevant(1)
         .fragment_shader(fs.main_entry_point(), ())
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
@@ -176,7 +177,7 @@ fn main() {
     let mut perspective = cgmath::perspective(
         Rad::from(Deg(90.0)),
         images[0].dimensions().width() as f32 / images[0].dimensions().height() as f32,
-        0.1,
+        0.01,
         10.0,
     );
 
@@ -184,6 +185,21 @@ fn main() {
 
     let mut running = true;
     let mut previous_mouse = (0.0, 0.0);
+
+
+    struct Movement {
+        forward: ElementState,
+        backward: ElementState,
+        left: ElementState,
+        right: ElementState,
+    }
+
+    let mut movement_state = Movement {
+        forward: ElementState::Released,
+        backward: ElementState::Released,
+        left: ElementState::Released,
+        right: ElementState::Released,
+    };
 
     while running {
 
@@ -202,23 +218,27 @@ fn main() {
             .build().unwrap()
         );
 
+        if movement_state.forward == ElementState::Pressed {
+            view = Matrix4::from_translation(Vector3::new(0.0, 0.0, 0.1)) * view
+        }
+        if movement_state.backward == ElementState::Pressed {
+            view = Matrix4::from_translation(Vector3::new(0.0, 0.0, -0.1)) * view
+        }
+        if movement_state.left == ElementState::Pressed {
+            view = Matrix4::from_translation(Vector3::new(0.1, 0.0, 0.0)) * view
+        }
+        if movement_state.right == ElementState::Pressed {
+            view = Matrix4::from_translation(Vector3::new(-0.1, 0.0, 0.0)) * view
+        }
+
         events_loop.poll_events(|e| match e {
             winit::Event::WindowEvent { event, .. } => match event {
-                winit::WindowEvent::CursorMoved { position, .. } => {
-                    println!("{:?}", images[0].dimensions());
-                    let dx = previous_mouse.0 - position.x as f32;
-                    let dy = previous_mouse.1 - position.y as f32;
-                    previous_mouse = (position.x as f32, position.y as f32);
-                    view = view * Matrix4::from_angle_y(Rad::from(Deg(dx / 10.0)));
-                    view = view * Matrix4::from_angle_z(Rad::from(Deg(dy / 10.0)));
-                    println!("mouse: {:?}", position)
-                },
                 winit::WindowEvent::KeyboardInput { input, .. } => {
                     match input.virtual_keycode {
-                        Some(VirtualKeyCode::W) => view = view * Matrix4::from_translation(Vector3::new(0.0, 0.0, 0.1)),
-                        Some(VirtualKeyCode::S) => view = view * Matrix4::from_translation(Vector3::new(0.0, 0.0, -0.1)),
-                        Some(VirtualKeyCode::A) => view = view * Matrix4::from_translation(Vector3::new(0.0, 0.1, 0.0)),
-                        Some(VirtualKeyCode::D) => view = view * Matrix4::from_translation(Vector3::new(0.0, -0.1, 0.0)),
+                        Some(VirtualKeyCode::W) => movement_state = Movement { forward: input.state, ..movement_state },
+                        Some(VirtualKeyCode::S) => movement_state = Movement { backward: input.state, ..movement_state },
+                        Some(VirtualKeyCode::A) => movement_state = Movement { left: input.state, ..movement_state },
+                        Some(VirtualKeyCode::D) => movement_state = Movement { right: input.state, ..movement_state },
                         _ => {}
                     }
                 }
@@ -227,6 +247,13 @@ fn main() {
                 }
                 _ => {}
             },
+            winit::Event::DeviceEvent { event, .. } => match event {
+                winit::DeviceEvent::MouseMotion { delta, .. } => {
+                    view = Matrix4::from_angle_y(Rad::from(Deg(delta.0 as f32 / 2.0))) * Matrix4::from_angle_x(Rad::from(Deg(delta.1 as f32 / 2.0))) * view;
+//                    view =  * view;
+                },
+                _ => {}
+            }
             _ => {},
         });
 
