@@ -9,7 +9,7 @@ use vulkano::framebuffer::{Framebuffer, Subpass, RenderPassAbstract, Framebuffer
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::command_buffer::{DynamicState, AutoCommandBufferBuilder};
 use vulkano::sync::GpuFuture;
-use vulkano::image::SwapchainImage;
+use vulkano::image::{SwapchainImage, AttachmentImage};
 use vulkano::pipeline::viewport::Viewport;
 use std::fs::File;
 use cgmath::{Rad, Matrix3, Matrix4, Point3, Vector3, Deg, Euler, Quaternion, Decomposed, Basis3, vec3};
@@ -20,6 +20,7 @@ use vulkano::image::traits::ImageViewAccess;
 use winit::dpi::LogicalPosition;
 use cgmath::prelude::{Rotation3, Angle};
 use crate::camera::Camera;
+use vulkano::format::Format;
 
 mod camera;
 
@@ -144,11 +145,17 @@ fn main() {
                 store: Store,
                 format: swapchain.format(),
                 samples: 1,
+            },
+            depth: {
+                load: Clear,
+                store: DontCare,
+                format: Format::D16Unorm,
+                samples: 1,
             }
         },
         pass: {
             color: [color],
-            depth_stencil: {}
+            depth_stencil: { depth }
         }
     ).unwrap());
 
@@ -157,6 +164,9 @@ fn main() {
         .vertex_shader(vs.main_entry_point(), ())
         .triangle_list()
 //        .cull_mode_disabled()
+//        .depth_write(true)
+        .depth_stencil_simple_depth()
+//        .depth_clamp(true)
         .viewports_dynamic_scissors_irrelevant(1)
         .fragment_shader(fs.main_entry_point(), ())
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
@@ -166,7 +176,7 @@ fn main() {
 
     let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None };
 
-    let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
+    let mut framebuffers = window_size_dependent_setup(device.clone(), &images, render_pass.clone(), &mut dynamic_state);
 
     let mut recreate_swapchain = false;
 
@@ -203,8 +213,6 @@ fn main() {
     while running {
         previous_frame_end.cleanup_finished();
 
-        use cgmath::ElementWise;
-
         if movement_state.forward == ElementState::Pressed {
             camera.move_forward(0.1);
         }
@@ -218,8 +226,6 @@ fn main() {
             camera.move_left(-0.1);
         }
 
-        println!("{:?}", camera);
-
         events_loop.poll_events(|e| match e {
             winit::Event::WindowEvent { event, .. } => match event {
                 winit::WindowEvent::KeyboardInput { input, .. } => {
@@ -228,6 +234,7 @@ fn main() {
                         Some(VirtualKeyCode::S) => movement_state = Movement { backward: input.state, ..movement_state },
                         Some(VirtualKeyCode::A) => movement_state = Movement { left:     input.state, ..movement_state },
                         Some(VirtualKeyCode::D) => movement_state = Movement { right:    input.state, ..movement_state },
+                        Some(VirtualKeyCode::Escape) => running = false,
                         _ => {}
                     }
                 }
@@ -265,7 +272,7 @@ fn main() {
             Err(e) => panic!("{:?}", e),
         };
 
-        let clear_values = vec!([0.0, 0.0, 1.0, 1.0].into());
+        let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into(), 1f32.into()];
 
         let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
             .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
@@ -293,11 +300,14 @@ fn main() {
 }
 
 fn window_size_dependent_setup(
+    device: Arc<Device>,
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPassAbstract + Send + Sync>,
     dynamic_state: &mut DynamicState
 ) -> Vec<Arc<FramebufferAbstract + Send + Sync>> {
     let dimensions = images[0].dimensions();
+
+    let depth_buffer = AttachmentImage::transient(device.clone(), dimensions.width_height(), Format::D16Unorm).unwrap();
 
     let viewport = Viewport {
         origin: [0.0, 0.0],
@@ -310,6 +320,7 @@ fn window_size_dependent_setup(
         Arc::new(
             Framebuffer::start(render_pass.clone())
                 .add(image.clone()).unwrap()
+                .add(depth_buffer.clone()).unwrap()
                 .build().unwrap()
         ) as Arc<FramebufferAbstract + Send + Sync>
     }).collect::<Vec<_>>()
