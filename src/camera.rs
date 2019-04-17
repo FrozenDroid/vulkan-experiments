@@ -22,7 +22,7 @@ impl<T> Camera<T>
 
     pub fn turn(&mut self, yaw: Deg<T>) {
         self.orientation = Quaternion::from_axis_angle(
-            self.orientation * Vector3::new(T::zero(), T::one(), T::zero()), yaw
+            self.orientation * vec3(T::zero(), T::one(), T::zero()), yaw
         ) * self.orientation;
     }
 
@@ -35,7 +35,7 @@ impl<T> Camera<T>
     }
 
     pub fn move_up(&mut self, movement: T) {
-        self.position -= self.up() * movement;
+        self.position += self.up() * movement;
     }
 
     fn forward(&self) -> Vector3<T> {
@@ -48,6 +48,10 @@ impl<T> Camera<T>
 
     fn up(&self) -> Vector3<T> {
         self.orientation.conjugate() * vec3(T::zero(), T::one(), T::zero())
+    }
+
+    pub fn position(&self) -> &Vector3<T> {
+        &self.position
     }
 
     pub fn view_matrix(&self) -> Matrix4<T> {

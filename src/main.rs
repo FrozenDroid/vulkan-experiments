@@ -12,8 +12,8 @@ use vulkano::sync::GpuFuture;
 use vulkano::image::{SwapchainImage, AttachmentImage};
 use vulkano::pipeline::viewport::Viewport;
 use std::fs::File;
-use cgmath::{Rad, Matrix3, Matrix4, Point3, Vector3, Deg, Euler, Quaternion, Decomposed, Basis3, vec3};
-use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
+use cgmath::{Rad, Matrix3, Matrix4, Point3, Vector3, Deg, Euler, Quaternion, Decomposed, Basis3, vec3, Vector4};
+use vulkano::descriptor::descriptor_set::{PersistentDescriptorSet, DescriptorSetDesc, DescriptorSetsCollection};
 use vulkano::pipeline::input_assembly::IndexType;
 use std::path::Path;
 use vulkano::image::traits::ImageViewAccess;
@@ -21,32 +21,43 @@ use winit::dpi::LogicalPosition;
 use cgmath::prelude::{Rotation3, Angle};
 use crate::camera::Camera;
 use vulkano::format::Format;
+use frozengame::{FrozenGameBuilder};
+use std::io::BufReader;
+use core::borrow::Borrow;
+use fuji::{Fuji, FujiBuilder};
+use frozengame::model::Vertex;
+use std::convert::TryInto;
 
 mod camera;
 
-#[derive(Copy, Clone)]
-struct Vertex {
-    position: [f32; 3],
-}
 
-struct Index {
-    position: [u32; 3],
-}
-
-unsafe impl vulkano::pipeline::input_assembly::Index for Index {
-    fn ty() -> IndexType {
-        IndexType::U32
-    }
-}
 
 #[derive(Clone)]
 struct UniformBufferObject {
-    //    model: Matrix4<f32>,
+    model: Matrix4<f32>,
     view:  Matrix4<f32>,
     proj:  Matrix4<f32>,
 }
 
+extern crate frozengame;
+
 fn main() {
+    let mut fuji = FujiBuilder::new()
+        .with_window()
+        .build().unwrap()
+        .with_graphics_queue()
+        .with_present_queue()
+        .with_swapchain()
+        .build().unwrap();
+
+    fuji.create_swapchain();
+
+    let engine_instance = FrozenGameBuilder::new(fuji).build();
+
+    loop {
+
+    }
+
     let extensions = vulkano_win::required_extensions();
 
     let instance = Instance::new(None, &extensions, None).expect("No vulkan available");
@@ -104,38 +115,55 @@ fn main() {
         ).unwrap()
     };
 
-    vulkano::impl_vertex!(Vertex, position);
+//    let teapot_vert_buf = CpuAccessibleBuffer::from_iter(
+//        device.clone(), BufferUsage::all(), teapot_object.meshes[0].vertices.clone().into_iter()
+//    ).unwrap();
+//
+//    let teapot_index_buf = CpuAccessibleBuffer::from_iter(
+//        device.clone(), BufferUsage::all(), teapot_object.meshes[0].indices.clone().into_iter()
+//    ).unwrap();
 
-    let (mut models, mat) = tobj::load_obj(Path::new("./teapot.obj")).expect("couldn't load teapot");
-    let mut model = models.first().expect("couldn't find teapot model");
-    let mesh = model.clone().mesh;
-    let indices = mesh.indices;
-    let vertices = mesh.positions.chunks(3).map(|chunk| Vertex { position: [chunk[0], chunk[1], chunk[2]] });
+//    let cube_vert_buf = CpuAccessibleBuffer::from_iter(
+//        device.clone(), BufferUsage::all(), cube_object.meshes[0].vertices.clone().into_iter()
+//    ).unwrap();
+//
+//    let cube_index_buf = CpuAccessibleBuffer::from_iter(
+//        device.clone(), BufferUsage::all(), cube_object.meshes[0].indices.clone().into_iter()
+//    ).unwrap();
 
-    let vertex_buffer = CpuAccessibleBuffer::from_iter(
-        device.clone(), BufferUsage::all(), vertices.into_iter()
-    ).unwrap();
-
-    let index_buffer = CpuAccessibleBuffer::from_iter(
-        device.clone(), BufferUsage::all(), indices.into_iter()
-    ).unwrap();
-
-    mod vs {
+    mod teapot_vs {
         vulkano_shaders::shader! {
             ty: "vertex",
-            path: "src/shader.vert"
+            path: "src/shaders/teapot_shader.vert"
         }
     }
 
-    mod fs {
+    mod teapot_fs {
         vulkano_shaders::shader! {
             ty: "fragment",
-            path: "src/shader.frag"
+            path: "src/shaders/teapot_shader.frag"
         }
     }
 
-    let vs = vs::Shader::load(device.clone()).unwrap();
-    let fs = fs::Shader::load(device.clone()).unwrap();
+    let teapot_vs = teapot_vs::Shader::load(device.clone()).unwrap();
+    let teapot_fs = teapot_fs::Shader::load(device.clone()).unwrap();
+
+//    mod cube_vs {
+//        vulkano_shaders::shader! {
+//            ty: "vertex",
+//            path: "src/shaders/cube_shader.vert"
+//        }
+//    }
+//
+//    mod cube_fs {
+//        vulkano_shaders::shader! {
+//            ty: "fragment",
+//            path: "src/shaders/cube_shader.frag"
+//        }
+//    }
+//
+//    let cube_vs = cube_vs::Shader::load(device.clone()).unwrap();
+//    let cube_fs = cube_fs::Shader::load(device.clone()).unwrap();
 
     let render_pass = Arc::new(vulkano::single_pass_renderpass!(
         device.clone(),
@@ -154,25 +182,41 @@ fn main() {
             }
         },
         pass: {
-            color: [color],
+            color: [ color ],
             depth_stencil: { depth }
         }
     ).unwrap());
 
-    let pipeline = Arc::new(GraphicsPipeline::start()
+    let teapot_pipeline = Arc::new(GraphicsPipeline::start()
         .vertex_input_single_buffer::<Vertex>()
-        .vertex_shader(vs.main_entry_point(), ())
+        .vertex_shader(teapot_vs.main_entry_point(), ())
         .triangle_list()
-//        .cull_mode_disabled()
-//        .depth_write(true)
         .depth_stencil_simple_depth()
-//        .depth_clamp(true)
         .viewports_dynamic_scissors_irrelevant(1)
-        .fragment_shader(fs.main_entry_point(), ())
+        .fragment_shader(teapot_fs.main_entry_point(), ())
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
         .build(device.clone())
         .unwrap()
     );
+
+    //    let mut cube_object     = Model::from_obj_path(&mut Path::new("./cube.obj")).unwrap();
+//    let mut teapot_object   = Model::from_obj_path(&mut Path::new("./teapot.obj")).unwrap();
+
+    let teapot = engine_instance.build_model(teapot_pipeline.clone())
+        .with_obj_path(&mut Path::new("./teapot.obj"))
+        .build().unwrap();
+
+//    let cube_pipeline = Arc::new(GraphicsPipeline::start()
+//        .vertex_input_single_buffer::<Vertex>()
+//        .vertex_shader(cube_vs.main_entry_point(), ())
+//        .triangle_list()
+//        .depth_stencil_simple_depth()
+//        .viewports_dynamic_scissors_irrelevant(1)
+//        .fragment_shader(cube_fs.main_entry_point(), ())
+//        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+//        .build(device.clone())
+//        .unwrap()
+//    );
 
     let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None };
 
@@ -199,6 +243,8 @@ fn main() {
         backward: ElementState,
         left:     ElementState,
         right:    ElementState,
+        up:       ElementState,
+        down:     ElementState,
     }
 
     let mut movement_state = Movement {
@@ -206,6 +252,8 @@ fn main() {
         backward: ElementState::Released,
         left:     ElementState::Released,
         right:    ElementState::Released,
+        up:       ElementState::Released,
+        down:     ElementState::Released,
     };
 
     let mut camera: Camera<f32> = Camera::default();
@@ -225,6 +273,12 @@ fn main() {
         if movement_state.right == ElementState::Pressed {
             camera.move_left(-0.1);
         }
+        if movement_state.up == ElementState::Pressed {
+            camera.move_up(0.1);
+        }
+        if movement_state.down == ElementState::Pressed {
+            camera.move_up(-0.1);
+        }
 
         events_loop.poll_events(|e| match e {
             winit::Event::WindowEvent { event, .. } => match event {
@@ -234,6 +288,8 @@ fn main() {
                         Some(VirtualKeyCode::S) => movement_state = Movement { backward: input.state, ..movement_state },
                         Some(VirtualKeyCode::A) => movement_state = Movement { left:     input.state, ..movement_state },
                         Some(VirtualKeyCode::D) => movement_state = Movement { right:    input.state, ..movement_state },
+                        Some(VirtualKeyCode::Space) => movement_state = Movement { up:    input.state, ..movement_state },
+                        Some(VirtualKeyCode::LControl) => movement_state = Movement { down:    input.state, ..movement_state },
                         Some(VirtualKeyCode::Escape) => running = false,
                         _ => {}
                     }
@@ -253,19 +309,45 @@ fn main() {
             _ => {},
         });
 
-        let uniform_buffer_object = UniformBufferObject {
+        let cube_uniform_buffer_object = UniformBufferObject {
+            model: Matrix4::from_translation(vec3(0.0, -5.0, -10.0)) * Matrix4::from_scale(1.0),
+            view: camera.view_matrix(),
+            proj: perspective
+        };
+//
+        let cube_uniform_buffer = CpuAccessibleBuffer::from_iter(
+            device.clone(), BufferUsage::all(), vec![cube_uniform_buffer_object].into_iter()
+        ).unwrap();
+//
+//        let cube_set = Arc::new(PersistentDescriptorSet::start(cube_pipeline.clone(), 0)
+//            .add_buffer(cube_uniform_buffer.clone()).unwrap()
+//            .build().unwrap()
+//        );
+
+        let teapot_uniform_buffer_object = UniformBufferObject {
+            model: Matrix4::from_translation(vec3(0.0, 0.0, -10.0)) * Matrix4::from_scale(2.0),
             view: camera.view_matrix(),
             proj: perspective
         };
 
-        let uniform_buffer = CpuAccessibleBuffer::from_iter(
-            device.clone(), BufferUsage::all(), vec![uniform_buffer_object].into_iter()
+        let teapot_uniform_buffer = CpuAccessibleBuffer::from_iter(
+            device.clone(), BufferUsage::all(), vec![teapot_uniform_buffer_object].into_iter()
         ).unwrap();
 
-        let set = Arc::new(PersistentDescriptorSet::start(pipeline.clone(), 0)
-            .add_buffer(uniform_buffer.clone()).unwrap()
+        let camera_pos = camera.position().clone();
+
+        let camera_uniform_buffer = CpuAccessibleBuffer::from_iter(
+            device.clone(), BufferUsage::all(), vec![camera_pos].into_iter()
+        ).unwrap();
+
+        let teapot_set = Arc::new(PersistentDescriptorSet::start(teapot_pipeline.clone(), 0)
+            .add_buffer(teapot_uniform_buffer.clone()).unwrap()
+            .add_buffer(cube_uniform_buffer.clone()).unwrap()
+            .add_buffer(camera_uniform_buffer.clone()).unwrap()
             .build().unwrap()
         );
+
+//        let camera_set = Arc::new(PersistentDescriptorSet::start(teapot_pipeline.clone(), 1))
 
         let (image_num, acquire_future) = match vulkano::swapchain::acquire_next_image(swapchain.clone(), None) {
             Ok(r) => r,
@@ -276,9 +358,14 @@ fn main() {
 
         let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
             .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
+            .unwrap();
+
+        teapot.draw(command_buffer, ((teapot_set).clone()))
             .unwrap()
-            .draw_indexed(pipeline.clone(), &dynamic_state, vertex_buffer.clone(), index_buffer.clone(), (set.clone()), ())
-            .unwrap()
+//            .draw_indexed(teapot_pipeline.clone(), &dynamic_state, teapot_vert_buf.clone(), teapot_index_buf.clone(), (teapot_set.clone()), ())
+//            .unwrap()
+//            .draw_indexed(cube_pipeline.clone(), &dynamic_state, cube_vert_buf.clone(), cube_index_buf.clone(), (cube_set.clone()), ())
+//            .unwrap()
             .end_render_pass()
             .unwrap()
             .build()

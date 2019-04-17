@@ -16,3 +16,6 @@ tobj = "0.1.7"
 cgmath = "0.17"
 image = "0.21"
 time = "0.1.38"
+
+frozengame = { path = "./frozengame" }
+fuji = { git = "https://github.com/darkwater/fuji/" }
