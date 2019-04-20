@@ -1,6 +1,5 @@
-use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
-use vulkano::device::{Device, Features, DeviceExtensions};
-use vulkano::buffer::{CpuAccessibleBuffer, BufferUsage, CpuBufferPool};
+use vulkano::device::Device;
+use vulkano::buffer::{CpuAccessibleBuffer, BufferUsage};
 use winit::{EventsLoop, WindowBuilder, Window, VirtualKeyCode, ElementState};
 use vulkano_win::VkSurfaceBuild;
 use vulkano::swapchain::{Swapchain, SurfaceTransform, PresentMode};
@@ -25,12 +24,13 @@ use frozengame::{FrozenGameBuilder};
 use std::io::BufReader;
 use core::borrow::Borrow;
 use fuji::{Fuji, FujiBuilder};
-use frozengame::model::Vertex;
+use frozengame::model::{Vertex, RenderDrawable};
+use frozengame::model::Drawable;
 use std::convert::TryInto;
+use specs::prelude::*;
 
 mod camera;
-
-
+mod components;
 
 #[derive(Clone)]
 struct UniformBufferObject {
@@ -54,82 +54,13 @@ fn main() {
 
     let engine_instance = FrozenGameBuilder::new(fuji).build();
 
-    loop {
+    let mut fuji = engine_instance.fuji.clone();
 
-    }
-
-    let extensions = vulkano_win::required_extensions();
-
-    let instance = Instance::new(None, &extensions, None).expect("No vulkan available");
-
-    // Take the first physical device
-    let physical_device = PhysicalDevice::enumerate(&instance).next().expect("Couldn't find device");
-    println!("{:?}", physical_device.name());
-
-    let mut events_loop = EventsLoop::new();
-    let surface = WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
-    let window = surface.window();
-
-    window.grab_cursor(true);
-    window.hide_cursor(true);
-
-    // Find a queue family that supports graphical usage.
-    let queue_family = physical_device.queue_families()
-        .find(|&q| q.supports_graphics() && q.supports_compute() && q.supports_transfers() && surface.is_supported(q).unwrap_or(false))
-        .expect("couldn't find a queue supporting graphics");
-
-    println!("Queues: {:?}", queue_family.queues_count());
-
-    let device_extensions = DeviceExtensions { khr_swapchain: true, ..DeviceExtensions::none() };
-
-    let (device, mut queues) = {
-        Device::new(
-            physical_device,
-            &Features::none(),
-            &device_extensions,
-            [(queue_family, 0.5)].iter().cloned()
-        ).expect("")
-    };
-
-    let queue = queues.next().unwrap();
-
-    let (mut swapchain, images) = {
-        let caps = surface.capabilities(physical_device).unwrap();
-
-        let usage = caps.supported_usage_flags;
-
-        let alpha = caps.supported_composite_alpha.iter().next().unwrap();
-
-        let format = caps.supported_formats[0].0;
-
-        let initial_dimensions = if let Some(dimensions) = window.get_inner_size() {
-            let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
-            [dimensions.0, dimensions.1]
-        } else {
-            return;
-        };
-
-        Swapchain::new(
-            device.clone(), surface.clone(), caps.min_image_count, format, initial_dimensions, 1,
-            usage, &queue, SurfaceTransform::Identity, alpha, PresentMode::Fifo, true, None
-        ).unwrap()
-    };
-
-//    let teapot_vert_buf = CpuAccessibleBuffer::from_iter(
-//        device.clone(), BufferUsage::all(), teapot_object.meshes[0].vertices.clone().into_iter()
-//    ).unwrap();
-//
-//    let teapot_index_buf = CpuAccessibleBuffer::from_iter(
-//        device.clone(), BufferUsage::all(), teapot_object.meshes[0].indices.clone().into_iter()
-//    ).unwrap();
-
-//    let cube_vert_buf = CpuAccessibleBuffer::from_iter(
-//        device.clone(), BufferUsage::all(), cube_object.meshes[0].vertices.clone().into_iter()
-//    ).unwrap();
-//
-//    let cube_index_buf = CpuAccessibleBuffer::from_iter(
-//        device.clone(), BufferUsage::all(), cube_object.meshes[0].indices.clone().into_iter()
-//    ).unwrap();
+    let swapchain = fuji.swapchain();
+    let images = fuji.swapchain_images();
+    let events_loop = fuji.events_loop();
+    let queue = fuji.graphics_queue();
+    let device = fuji.device();
 
     mod teapot_vs {
         vulkano_shaders::shader! {
@@ -148,22 +79,22 @@ fn main() {
     let teapot_vs = teapot_vs::Shader::load(device.clone()).unwrap();
     let teapot_fs = teapot_fs::Shader::load(device.clone()).unwrap();
 
-//    mod cube_vs {
-//        vulkano_shaders::shader! {
-//            ty: "vertex",
-//            path: "src/shaders/cube_shader.vert"
-//        }
-//    }
-//
-//    mod cube_fs {
-//        vulkano_shaders::shader! {
-//            ty: "fragment",
-//            path: "src/shaders/cube_shader.frag"
-//        }
-//    }
-//
-//    let cube_vs = cube_vs::Shader::load(device.clone()).unwrap();
-//    let cube_fs = cube_fs::Shader::load(device.clone()).unwrap();
+    mod cube_vs {
+        vulkano_shaders::shader! {
+            ty: "vertex",
+            path: "src/shaders/cube_shader.vert"
+        }
+    }
+
+    mod cube_fs {
+        vulkano_shaders::shader! {
+            ty: "fragment",
+            path: "src/shaders/cube_shader.frag"
+        }
+    }
+
+    let cube_vs = cube_vs::Shader::load(device.clone()).unwrap();
+    let cube_fs = cube_fs::Shader::load(device.clone()).unwrap();
 
     let render_pass = Arc::new(vulkano::single_pass_renderpass!(
         device.clone(),
@@ -199,24 +130,25 @@ fn main() {
         .unwrap()
     );
 
-    //    let mut cube_object     = Model::from_obj_path(&mut Path::new("./cube.obj")).unwrap();
-//    let mut teapot_object   = Model::from_obj_path(&mut Path::new("./teapot.obj")).unwrap();
-
-    let teapot = engine_instance.build_model(teapot_pipeline.clone())
+    let mut teapot = engine_instance.build_model(teapot_pipeline.clone())
         .with_obj_path(&mut Path::new("./teapot.obj"))
         .build().unwrap();
 
-//    let cube_pipeline = Arc::new(GraphicsPipeline::start()
-//        .vertex_input_single_buffer::<Vertex>()
-//        .vertex_shader(cube_vs.main_entry_point(), ())
-//        .triangle_list()
-//        .depth_stencil_simple_depth()
-//        .viewports_dynamic_scissors_irrelevant(1)
-//        .fragment_shader(cube_fs.main_entry_point(), ())
-//        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-//        .build(device.clone())
-//        .unwrap()
-//    );
+    let cube_pipeline = Arc::new(GraphicsPipeline::start()
+        .vertex_input_single_buffer::<Vertex>()
+        .vertex_shader(cube_vs.main_entry_point(), ())
+        .triangle_list()
+        .depth_stencil_simple_depth()
+        .viewports_dynamic_scissors_irrelevant(1)
+        .fragment_shader(cube_fs.main_entry_point(), ())
+        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+        .build(device.clone())
+        .unwrap()
+    );
+
+    let cube = engine_instance.build_model(cube_pipeline.clone())
+        .with_obj_path(&mut Path::new("./cube.obj"))
+        .build().unwrap();
 
     let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None };
 
@@ -280,49 +212,51 @@ fn main() {
             camera.move_up(-0.1);
         }
 
-        events_loop.poll_events(|e| match e {
-            winit::Event::WindowEvent { event, .. } => match event {
-                winit::WindowEvent::KeyboardInput { input, .. } => {
-                    match input.virtual_keycode {
-                        Some(VirtualKeyCode::W) => movement_state = Movement { forward:  input.state, ..movement_state },
-                        Some(VirtualKeyCode::S) => movement_state = Movement { backward: input.state, ..movement_state },
-                        Some(VirtualKeyCode::A) => movement_state = Movement { left:     input.state, ..movement_state },
-                        Some(VirtualKeyCode::D) => movement_state = Movement { right:    input.state, ..movement_state },
-                        Some(VirtualKeyCode::Space) => movement_state = Movement { up:    input.state, ..movement_state },
-                        Some(VirtualKeyCode::LControl) => movement_state = Movement { down:    input.state, ..movement_state },
-                        Some(VirtualKeyCode::Escape) => running = false,
-                        _ => {}
+        if let Ok(ref mut e) = events_loop.write() {
+            e.poll_events(|e| match e {
+                winit::Event::WindowEvent { event, .. } => match event {
+                    winit::WindowEvent::KeyboardInput { input, .. } => {
+                        match input.virtual_keycode {
+                            Some(VirtualKeyCode::W) => movement_state = Movement { forward:  input.state, ..movement_state },
+                            Some(VirtualKeyCode::S) => movement_state = Movement { backward: input.state, ..movement_state },
+                            Some(VirtualKeyCode::A) => movement_state = Movement { left:     input.state, ..movement_state },
+                            Some(VirtualKeyCode::D) => movement_state = Movement { right:    input.state, ..movement_state },
+                            Some(VirtualKeyCode::Space) => movement_state = Movement { up:    input.state, ..movement_state },
+                            Some(VirtualKeyCode::LControl) => movement_state = Movement { down:    input.state, ..movement_state },
+                            Some(VirtualKeyCode::Escape) => running = false,
+                            _ => {}
+                        }
                     }
-                }
-                winit::WindowEvent::CloseRequested => {
-                    running = false;
-                }
-                _ => {}
-            },
-            winit::Event::DeviceEvent { event, .. } => match event {
-                winit::DeviceEvent::MouseMotion { delta, .. } => {
-                    camera.turn(Deg(delta.0 as f32 * 0.1));
-                    camera.pitch(Deg(delta.1 as f32 * 0.1));
+                    winit::WindowEvent::CloseRequested => {
+                        running = false;
+                    }
+                    _ => {}
                 },
-                _ => {}
-            }
-            _ => {},
-        });
+                winit::Event::DeviceEvent { event, .. } => match event {
+                    winit::DeviceEvent::MouseMotion { delta, .. } => {
+                        camera.turn(Deg(delta.0 as f32 * 0.1));
+                        camera.pitch(Deg(delta.1 as f32 * 0.1));
+                    },
+                    _ => {}
+                }
+                _ => {},
+            });
+        }
 
         let cube_uniform_buffer_object = UniformBufferObject {
             model: Matrix4::from_translation(vec3(0.0, -5.0, -10.0)) * Matrix4::from_scale(1.0),
             view: camera.view_matrix(),
             proj: perspective
         };
-//
+
         let cube_uniform_buffer = CpuAccessibleBuffer::from_iter(
             device.clone(), BufferUsage::all(), vec![cube_uniform_buffer_object].into_iter()
         ).unwrap();
-//
-//        let cube_set = Arc::new(PersistentDescriptorSet::start(cube_pipeline.clone(), 0)
-//            .add_buffer(cube_uniform_buffer.clone()).unwrap()
-//            .build().unwrap()
-//        );
+
+        let cube_set = Arc::new(PersistentDescriptorSet::start(cube_pipeline.clone(), 0)
+            .add_buffer(cube_uniform_buffer.clone()).unwrap()
+            .build().unwrap()
+        );
 
         let teapot_uniform_buffer_object = UniformBufferObject {
             model: Matrix4::from_translation(vec3(0.0, 0.0, -10.0)) * Matrix4::from_scale(2.0),
@@ -347,8 +281,6 @@ fn main() {
             .build().unwrap()
         );
 
-//        let camera_set = Arc::new(PersistentDescriptorSet::start(teapot_pipeline.clone(), 1))
-
         let (image_num, acquire_future) = match vulkano::swapchain::acquire_next_image(swapchain.clone(), None) {
             Ok(r) => r,
             Err(e) => panic!("{:?}", e),
@@ -356,20 +288,16 @@ fn main() {
 
         let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into(), 1f32.into()];
 
-        let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
+        let mut command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
             .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
-            .unwrap();
-
-        teapot.draw(command_buffer, ((teapot_set).clone()))
             .unwrap()
-//            .draw_indexed(teapot_pipeline.clone(), &dynamic_state, teapot_vert_buf.clone(), teapot_index_buf.clone(), (teapot_set.clone()), ())
-//            .unwrap()
-//            .draw_indexed(cube_pipeline.clone(), &dynamic_state, cube_vert_buf.clone(), cube_index_buf.clone(), (cube_set.clone()), ())
-//            .unwrap()
+            .draw_drawable(&teapot, &dynamic_state, (teapot_set).clone())
+            .unwrap()
+            .draw_drawable(&cube, &dynamic_state, (cube_set).clone())
+            .unwrap()
             .end_render_pass()
             .unwrap()
-            .build()
-            .unwrap();
+            .build().unwrap();
 
         let future = previous_frame_end.join(acquire_future)
             .then_execute(queue.clone(), command_buffer)
