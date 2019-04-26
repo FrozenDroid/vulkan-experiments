@@ -1,6 +1,6 @@
 use cgmath::{Array, Deg, Vector3, Point3, Quaternion, BaseNum, Rotation, One, RelativeEq, Rotation3,  BaseFloat, InnerSpace, Matrix4, EuclideanSpace, SquareMatrix, vec3, Rad};
-use core::borrow::Borrow;
-use cgmath::prelude::Angle;
+
+
 
 #[derive(Debug)]
 pub struct Camera<T> {
@@ -50,6 +50,10 @@ impl<T> Camera<T>
         self.orientation.conjugate() * vec3(T::zero(), T::one(), T::zero())
     }
 
+    pub fn set_position(&mut self, position: Vector3<T>) {
+        self.position = position;
+    }
+
     pub fn position(&self) -> &Vector3<T> {
         &self.position
     }
@@ -63,7 +67,7 @@ impl<T> Camera<T>
 impl Default for Camera<f32> {
     fn default() -> Self {
         Camera {
-            position:    Vector3::new(0.0, 0.0, -1.0),
+            position:    Vector3::new(0.0, 0.0, 4.0),
             orientation: Quaternion::one(),
         }
     }
