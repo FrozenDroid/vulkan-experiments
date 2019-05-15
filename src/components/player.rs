@@ -1,8 +1,5 @@
-use specs::{Component, VecStorage, Entity};
+use specs::{Entity, Component, VecStorage};
+use crate::components::movement::Isometry;
+use alga::general::RealField;
 
-//#[derive(Default)]
 pub struct ActivePlayer(pub Entity);
-
-//impl Component for Player {
-//    type Storage = VecStorage<Self>;
-//}
